@@ -1,0 +1,39 @@
+server:
+  port: ${SERVER_PORT:8761}
+
+spring:
+  boot:
+    admin:
+      client:
+        url: ${SPRING_BOOT_ADMIN_CLIENT_URL:http://localhost:10000}
+        instance:
+          service-url: ${SPRING_BOOT_ADMIN_INSTANCE_SERVICE_URL:http://localhost:8761}
+          management-url: ${SPRING_BOOT_ADMIN_INSTANCE_MANAGEMENT_URL:http://localhost:8761/actuator}
+          health-url: ${SPRING_BOOT_ADMIN_INSTANCE_HEALTH_URL:http://localhost:8761/actuator/health}
+
+  application:
+    name: discovery
+
+eureka:
+  client:
+    register-with-eureka: ${EUREKA_REGISTER_WITH_EUREKA:false}
+    fetch-registry: ${EUREKA_FETCH_REGISTRY:false}
+
+  instance:
+    prefer-ip-address: ${EUREKA_INSTANCE_PREFER_IP_ADDRESS:false}
+    hostname: ${EUREKA_INSTANCE_HOSTNAME:localhost}
+    non-secure-port: ${EUREKA_INSTANCE_NON_SECURE_PORT:8761}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: always
+logging:
+  level:
+    com.netflix.discovery: ${LOGGING_LEVEL_NETFLIX_DISCOVERY:INFO}
+    com.netflix.eureka: ${LOGGING_LEVEL_NETFLIX_EUREKA:INFO}
+    org.springframework.cloud.netflix.eureka: ${LOGGING_LEVEL_SPRING_CLOUD_NETFLIX_EUREKA:INFO}

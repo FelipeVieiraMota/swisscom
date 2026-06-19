@@ -15,5 +15,7 @@
 
     <modules>
         <module>infrastructure/gateway</module>
+        <module>infrastructure/discovery</module>
+        <module>infrastructure/observability</module>
     </modules>
 </project>

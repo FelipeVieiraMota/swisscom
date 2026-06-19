@@ -1,0 +1,13 @@
+spring:
+  boot:
+    admin:
+      client:
+        url: http://localhost:10000
+        instance:
+          service-url: http://localhost:8761
+          management-url: http://localhost:8761/actuator
+          health-url: http://localhost:8761/actuator/health
+eureka:
+  instance:
+    prefer-ip-address: false
+    non-secure-port: 8761

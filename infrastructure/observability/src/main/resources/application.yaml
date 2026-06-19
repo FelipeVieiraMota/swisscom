@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: ${SPRING_APPLICATION_NAME:observability}
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:default}
+server:
+  port: ${SERVER_PORT:10000}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: always
+logging:
+  level:
+    com.netflix.discovery: ${LOGGING_LEVEL_NETFLIX_DISCOVERY:INFO}
+    com.netflix.eureka: ${LOGGING_LEVEL_NETFLIX_EUREKA:INFO}
+    org.springframework.cloud.netflix.eureka: ${LOGGING_LEVEL_SPRING_CLOUD_NETFLIX_EUREKA:INFO}
+    org.springframework.boot.admin: ${LOGGING_LEVEL_SPRING_BOOT_ADMIN:INFO}
+    org.springframework.web: ${LOGGING_LEVEL_WEB:INFO}
+    org.springframework.security: ${LOGGING_LEVEL_SECURITY:INFO}
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_DEFAULT_ZONE:http://localhost:8761/eureka/}
+    register-with-eureka: ${EUREKA_REGISTER_WITH_EUREKA:true}
+    fetch-registry: ${EUREKA_FETCH_REGISTRY:true}

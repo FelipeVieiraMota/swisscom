@@ -1,0 +1,59 @@
+name: swisscom
+
+services:
+  # Spring Boot Admin - For application observability
+  observability:
+    build:
+      context: ../infrastructure/observability
+    ports:
+      - "${OBSERVABILITY_PORT:-10000}:10000"
+    networks: [ backend ]
+    env_file:
+      - ./env/observability.env
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://observability:10000/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Eureka - For service discovery
+  discovery:
+    build:
+      context: ../infrastructure/discovery
+    ports:
+      - "${DISCOVERY_PORT:-8761}:8761"
+    networks: [ backend ]
+    env_file:
+      - ./env/discovery.env
+    depends_on:
+      observability:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://discovery:8761/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Spring Cloud Gateway - For routing and load balancing
+  gateway:
+    build:
+      context: ../infrastructure/gateway
+    ports:
+      - "${GATEWAY_PORT:-8080}:80"
+    networks: [ backend ]
+    env_file:
+      - ./env/gateway.env
+    depends_on:
+      discovery:
+        condition: service_healthy
+      observability:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://gateway:80/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+networks:
+  backend:
+    driver: bridge

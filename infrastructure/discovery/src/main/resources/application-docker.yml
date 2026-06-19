@@ -1,0 +1,9 @@
+spring:
+  boot:
+    admin:
+      client:
+        url: http://observability:10000
+        instance:
+          service-url: http://discovery:8761
+          management-url: http://discovery:8761/actuator
+          health-url: http://discovery:8761/actuator/health

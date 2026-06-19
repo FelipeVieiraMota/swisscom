@@ -1,0 +1,10 @@
+.DS_Store
+.idea/
+**/target/
+
+# Local environment overrides and secrets
+.env
+**/.env
+!.env.example
+!**/.env.example
+
