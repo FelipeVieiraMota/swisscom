@@ -38,6 +38,56 @@ The development-only endpoints are:
 These routes are created only when the gateway's `dev` Spring profile is
 active. The infrastructure containers remain unexposed to the host.
 
+### Optional local HTTPS
+
+The TLS override adds Caddy as an edge proxy on port 443. Caddy terminates TLS
+and forwards requests to the gateway over the isolated Docker network:
+
+```bash
+docker compose \
+  -f deploy/docker-compose.yml \
+  -f deploy/docker-compose.dev.yml \
+  -f deploy/docker-compose.tls.yml \
+  up --build
+```
+
+The HTTPS endpoints are:
+
+- Gateway: https://gateway.localhost
+- Eureka: https://eureka.localhost
+- Spring Boot Admin: https://admin.localhost
+
+Caddy generates the development certificates and private keys in a Docker
+volume; they are never committed. Its local CA is not trusted by the host by
+default. To obtain the public root certificate after Caddy starts:
+
+```bash
+docker compose \
+  -f deploy/docker-compose.yml \
+  -f deploy/docker-compose.dev.yml \
+  -f deploy/docker-compose.tls.yml \
+  cp caddy:/data/caddy/pki/authorities/local/root.crt /tmp/swisscom-caddy-root.crt
+```
+
+Import `/tmp/swisscom-caddy-root.crt` into the operating system or browser
+trust store to remove the local certificate warning. Never copy or share the
+CA private key. A production deployment would replace the internal CA with
+Let's Encrypt or the organization's certificate authority.
+
+On macOS, trust the extracted public certificate in the current user's login
+keychain:
+
+```bash
+security add-trusted-cert \
+  -r trustRoot \
+  -k "$HOME/Library/Keychains/login.keychain-db" \
+  /tmp/swisscom-caddy-root.crt
+```
+
+The CA is persisted in the `caddy_data` Docker volume. Running
+`docker compose down -v` deletes that CA, so a newly generated root certificate
+must be trusted again.
+
 ### Override local values
 
 Creating a `.env` file is optional. Use it when a default port conflicts with

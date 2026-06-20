@@ -1,0 +1,11 @@
+{
+	admin off
+}
+
+https://localhost,
+https://gateway.localhost,
+https://eureka.localhost,
+https://admin.localhost {
+	tls internal
+	reverse_proxy gateway:80
+}
