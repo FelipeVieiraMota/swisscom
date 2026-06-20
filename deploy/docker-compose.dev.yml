@@ -1,0 +1,23 @@
+services:
+  gateway:
+    environment:
+      SPRING_PROFILES_ACTIVE: docker,dev
+      SPRING_BOOT_ADMIN_CLIENT_INSTANCE_SERVICE_URL: http://gateway.localhost:80/
+      SPRING_BOOT_ADMIN_CLIENT_INSTANCE_MANAGEMENT_URL: http://gateway.localhost:80/actuator
+      SPRING_BOOT_ADMIN_CLIENT_INSTANCE_HEALTH_URL: http://gateway.localhost:80/actuator/health
+    networks:
+      edge:
+      backend:
+        aliases:
+          - eureka.localhost
+          - gateway.localhost
+
+  observability:
+    environment:
+      SPRING_BOOT_ADMIN_UI_PUBLIC_URL: http://admin.localhost:80/
+
+  discovery:
+    environment:
+      SPRING_BOOT_ADMIN_CLIENT_INSTANCE_SERVICE_URL: http://eureka.localhost:80/
+      SPRING_BOOT_ADMIN_CLIENT_INSTANCE_MANAGEMENT_URL: http://eureka.localhost:80/actuator
+      SPRING_BOOT_ADMIN_CLIENT_INSTANCE_HEALTH_URL: http://eureka.localhost:80/actuator/health

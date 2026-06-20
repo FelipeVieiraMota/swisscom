@@ -15,11 +15,28 @@ local Java installation is required:
 docker compose -f deploy/docker-compose.yml up --build
 ```
 
-The services are then available at:
+Only the public entry point is exposed to the host:
 
-- Gateway: http://localhost:8080
-- Eureka: http://localhost:8761
-- Spring Boot Admin: http://localhost:10000
+- Gateway: http://localhost
+
+Eureka and Spring Boot Admin are attached only to the internal backend network.
+To make their UIs available through development-only gateway routes, apply the
+development override:
+
+```bash
+docker compose \
+  -f deploy/docker-compose.yml \
+  -f deploy/docker-compose.dev.yml \
+  up --build
+```
+
+The development-only endpoints are:
+
+- Eureka: http://eureka.localhost
+- Spring Boot Admin: http://admin.localhost
+
+These routes are created only when the gateway's `dev` Spring profile is
+active. The infrastructure containers remain unexposed to the host.
 
 ### Override local values
 
