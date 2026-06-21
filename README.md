@@ -253,22 +253,6 @@ mvn -pl infrastructure/gateway test
 
 ## Troubleshooting
 
-### Gateway reports `Invalid or corrupt jarfile`
-
-This normally means Docker stored an incomplete image after its disk became
-full. Check free space, remove only build cache, and rebuild the Gateway:
-
-```bash
-df -h /
-docker builder prune -af
-docker compose -f deploy/docker-compose.dev.yml build --no-cache gateway
-./deploy/run.sh dev gateway
-./deploy/run.sh dev caddy
-```
-
-Do not use `docker volume prune` unless losing PostgreSQL, Redis and Caddy data
-is intentional.
-
 ### Reset all DEV data
 
 This intentionally deletes all named DEV volumes:
