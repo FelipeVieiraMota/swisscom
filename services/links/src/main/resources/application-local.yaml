@@ -1,0 +1,8 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/links}
+
+app:
+  security:
+    jwt:
+      secret: ${APP_SECURITY_JWT_SECRET:cAUIescVgFsWtSshPjjZk+RCdTzUTgBwk6UGHbgkAdp1eDjLwrZn86MAd3XQjnNWj1lyk1VL/ECBYTWMwHdPPQ==}

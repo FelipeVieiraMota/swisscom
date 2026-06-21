@@ -34,9 +34,24 @@ services:
       SPRINGDOC_API_DOCS_ENABLED: false
       SPRINGDOC_SWAGGER_UI_ENABLED: false
 
+  links:
+    env_file:
+      - ./env/prod/links.env
+    environment:
+      APP_SECURITY_JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the local .env file}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the local .env file}
+      SPRINGDOC_API_DOCS_ENABLED: false
+      SPRINGDOC_SWAGGER_UI_ENABLED: false
+
   auth-postgres:
     environment:
       POSTGRES_DB: authenticator
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the local .env file}
+
+  links-postgres:
+    environment:
+      POSTGRES_DB: links
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the local .env file}
 

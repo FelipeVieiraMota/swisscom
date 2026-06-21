@@ -1,4 +1,15 @@
 services:
+  links-postgres:
+    environment:
+      POSTGRES_DB: links
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "127.0.0.1:${LINKS_POSTGRES_PORT:-5433}:5432"
+    networks:
+      - backend
+      - dev-access
+
   auth-postgres:
     environment:
       POSTGRES_DB: authenticator
@@ -47,6 +58,12 @@ services:
       APP_SECURITY_JWT_SECRET: ${DEV_JWT_SECRET:-cAUIescVgFsWtSshPjjZk+RCdTzUTgBwk6UGHbgkAdp1eDjLwrZn86MAd3XQjnNWj1lyk1VL/ECBYTWMwHdPPQ==}
       APP_BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@swisscom.local}
       APP_BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-ChangeMe-Admin-2026!}
+
+  links:
+    env_file:
+      - ./env/dev/links.env
+    environment:
+      APP_SECURITY_JWT_SECRET: ${DEV_JWT_SECRET:-cAUIescVgFsWtSshPjjZk+RCdTzUTgBwk6UGHbgkAdp1eDjLwrZn86MAd3XQjnNWj1lyk1VL/ECBYTWMwHdPPQ==}
 
 networks:
   dev-access:

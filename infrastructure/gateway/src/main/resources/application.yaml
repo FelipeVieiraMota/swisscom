@@ -30,13 +30,13 @@ spring:
 
             # Link management API
             - id: link-api
-              uri: ${LINK_API_SERVICE_URI:lb://link-api}
+              uri: ${LINK_API_SERVICE_URI:lb://links}
               predicates:
                 - Path=/api/v1/links,/api/v1/links/**
 
             # Public short-link redirect
             - id: link-redirect
-              uri: ${LINK_API_SERVICE_URI:lb://link-api}
+              uri: ${LINK_API_SERVICE_URI:lb://links}
               predicates:
                 - Path=/r/**
                 - Method=GET

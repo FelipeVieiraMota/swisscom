@@ -1,3 +1,81 @@
+server:
+  port: ${SERVER_PORT:4001}
+
 spring:
   application:
     name: links
+
+  boot:
+    admin:
+      client:
+        enabled: ${SPRING_BOOT_ADMIN_CLIENT_ENABLED:false}
+        auto-registration: ${SPRING_BOOT_ADMIN_CLIENT_AUTO_REGISTRATION:false}
+        instance:
+          service-host-type: IP
+          service-url: http://${spring.cloud.client.ip-address}:${server.port}
+          management-url: http://${spring.cloud.client.ip-address}:${server.port}/actuator
+          health-url: http://${spring.cloud.client.ip-address}:${server.port}/actuator/health
+
+  datasource:
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+
+  flyway:
+    enabled: ${SPRING_FLYWAY_ENABLED:true}
+
+app:
+  security:
+    public-paths:
+      - /r/**
+      - /api/v1/links/api-docs/**
+      - /api/v1/links/swagger-ui/**
+      - /swagger-ui/**
+      - /actuator/health
+      - /actuator/info
+      - /error
+    jwt:
+      secret: ${APP_SECURITY_JWT_SECRET}
+      issuer: ${APP_SECURITY_JWT_ISSUER:swisscom-authenticator}
+      audience: ${APP_SECURITY_JWT_AUDIENCE:swisscom-api}
+
+eureka:
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${random.uuid}
+    non-secure-port: ${server.port}
+    metadata-map:
+      management.context-path: /actuator
+  client:
+    register-with-eureka: ${EUREKA_CLIENT_REGISTER_WITH_EUREKA:false}
+    fetch-registry: ${EUREKA_CLIENT_FETCH_REGISTRY:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+springdoc:
+  swagger-ui:
+    path: /api/v1/links/swagger-ui
+    enabled: ${SPRINGDOC_SWAGGER_UI_ENABLED:true}
+    disable-swagger-default-url: true
+    url: /api/v1/links/api-docs
+    display-request-duration: true
+    persist-authorization: true
+  api-docs:
+    path: /api/v1/links/api-docs
+    enabled: ${SPRINGDOC_API_DOCS_ENABLED:true}
+
+logging:
+  level:
+    org.springframework.security: ${LOGGING_LEVEL_SECURITY:INFO}
+    org.springframework.web: ${LOGGING_LEVEL_WEB:INFO}

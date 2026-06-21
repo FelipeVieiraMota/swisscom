@@ -2,6 +2,24 @@ name: swisscom
 
 services:
 
+  links:
+    build:
+      context: ../services/links
+    networks:
+      - backend
+    depends_on:
+      links-postgres:
+        condition: service_healthy
+      discovery:
+        condition: service_healthy
+      observability:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:4001/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   authenticator:
     build:
       context: ../services/authenticator
@@ -36,6 +54,18 @@ services:
       - backend
     volumes:
       - auth_postgres_volume:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  links-postgres:
+    image: postgres:17
+    networks:
+      - backend
+    volumes:
+      - links_postgres_volume:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB || exit 1" ]
       interval: 10s
@@ -94,3 +124,4 @@ networks:
     internal: true
 volumes:
   auth_postgres_volume:
+  links_postgres_volume:

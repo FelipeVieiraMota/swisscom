@@ -40,10 +40,11 @@ Available endpoints:
 
 - Gateway: http://localhost
 - Auth API: http://localhost/api/v1/auth
-- Swagger UI: http://localhost/api/v1/auth/swagger-ui
+- Links API: http://localhost/api/v1/links
 - Eureka: http://eureka.localhost
 - Spring Boot Admin: http://admin.localhost
-- PostgreSQL: `127.0.0.1:5432`
+- Auth PostgreSQL: `127.0.0.1:5432`
+- Links PostgreSQL: `127.0.0.1:5433`
 
 Development administrator:
 
@@ -57,13 +58,13 @@ Override these values in the ignored root `.env` file using
 
 ### Run a service from the IDE
 
-Start only PostgreSQL using the same DEV configuration:
+Start only the databases using the same DEV configuration:
 
 ```bash
 docker compose \
   -f deploy/docker-compose.yml \
   -f deploy/docker-compose.dev.yml \
-  up -d auth-postgres
+  up -d auth-postgres links-postgres
 ```
 
 Run the Authenticator with the `local` Spring profile and a local JWT secret:
