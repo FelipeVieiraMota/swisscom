@@ -1,5 +1,5 @@
 server:
-  port: ${SERVER_PORT:8080}
+  port: ${SERVER_PORT:80}
 
 spring:
   boot:
@@ -71,7 +71,7 @@ eureka:
   instance:
     hostname: ${EUREKA_INSTANCE_HOSTNAME:localhost}
     prefer-ip-address: ${EUREKA_INSTANCE_PREFER_IP_ADDRESS:false}
-    non-secure-port: ${EUREKA_INSTANCE_NON_SECURE_PORT:8080}
+    non-secure-port: ${EUREKA_INSTANCE_NON_SECURE_PORT:80}
     status-page-url-path: ${EUREKA_INSTANCE_STATUS_PAGE_URL_PATH:/actuator/info}
     health-check-url-path: ${EUREKA_INSTANCE_HEALTH_CHECK_URL_PATH:/actuator/health}
     metadata-map:

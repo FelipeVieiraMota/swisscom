@@ -9,3 +9,13 @@ https://admin.localhost {
 	tls internal
 	reverse_proxy gateway:80
 }
+
+https://auth.localhost {
+	tls internal
+	reverse_proxy authenticator:4000
+}
+
+https://links.localhost {
+	tls internal
+	reverse_proxy links:5000
+}

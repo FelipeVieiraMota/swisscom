@@ -5,6 +5,6 @@
 # Local environment overrides and secrets
 .env
 **/.env
-!.env.example
-!**/.env.example
-
+deploy/certs/
+deploy/env/*/jwt-secret.env
+*.p12

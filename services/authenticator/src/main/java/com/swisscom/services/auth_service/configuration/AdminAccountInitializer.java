@@ -21,7 +21,7 @@ import java.util.Set;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-@Profile({"dev", "local", "test"})
+@Profile({"dev", "localhost", "test"})
 @EnableConfigurationProperties(BootstrapAdminProperties.class)
 public class AdminAccountInitializer implements ApplicationRunner {
 

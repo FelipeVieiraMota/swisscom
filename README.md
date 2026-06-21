@@ -1,50 +1,187 @@
-# Swisscom URL Shortener Assignment
+# Swisscom URL Shortener
 
-## Deployment modes
+URL shortener implemented as a Spring Boot monorepo. It includes stateless JWT
+authentication, link management, service discovery, monitoring, load balancing
+and HTTPS for development.
 
-The repository has two explicit modes:
+## Architecture
 
 ```text
-deploy/
-├── docker-compose.yml           # shared, environment-neutral services
-├── docker-compose.dev.yml       # DEV, including local/IDE development
-├── docker-compose.dev-tls.yml   # optional HTTPS for DEV
-├── docker-compose.prod.yml      # production-like security boundary
-├── env/
-│   ├── dev/
-│   └── prod/
-└── caddy/
-    ├── dev/
-    └── prod/
+                                      +-> Authenticator -> Auth PostgreSQL
+Client -> HTTPS -> Caddy -> Gateway --+
+                                      +-> Links (3 instances) -> Links PostgreSQL
+
+                         Eureka <---- services
+              Spring Boot Admin <---- Actuator
 ```
 
-The base Compose file is not intended to run by itself. Always combine it with
-either the DEV or PROD-like override.
+| Service | Internal port | Responsibility |
+|---|---:|---|
+| Gateway | `80` | Public API routing and load balancing |
+| Authenticator | `4000` | Users, login and JWT generation |
+| Links | `5000` | Link management and redirects |
+| Discovery | `8761` | Eureka service discovery |
+| Observability | `10000` | Spring Boot Admin |
+| Caddy | `80`, `443` | DEV HTTP/HTTPS entry point |
 
-## DEV
+Authenticator and Links use separate PostgreSQL databases. Both APIs receive
+the same environment-specific JWT secret, but Links never accesses the
+Authenticator database.
 
-DEV contains the former default and local configurations. It exposes the
-gateway, the development infrastructure routes and PostgreSQL on loopback for
-IDE runs.
+## Environments
 
-### Full stack in Docker
+The repository intentionally supports only two execution modes:
+
+| Environment | Applications | Databases and Redis | TLS termination |
+|---|---|---|---|
+| `localhost` | IntelliJ | Docker | Caddy |
+| `dev` | Docker | Docker | Caddy |
+
+Both environments use the same TLS mechanism. Caddy terminates HTTPS and keeps
+its local certificate authority in the shared `swisscom-caddy-data` Docker
+volume. Trusting this CA once covers both localhost and DEV.
+
+Only one environment can run at a time because both Caddy containers publish
+host port `443`. Stop the current environment before switching to the other.
+
+## Requirements
+
+- Java 21
+- Maven 3.9+
+- Docker Desktop with Docker Compose v2
+- IntelliJ IDEA with Lombok annotation processing enabled
+- `openssl`
+
+Run all commands from the repository root.
+
+## Quick start: localhost
+
+Use this mode to run the Java applications from IntelliJ while PostgreSQL and
+Redis remain in Docker.
+
+### 1. Start databases and Redis
 
 ```bash
-docker compose \
-  -f deploy/docker-compose.yml \
-  -f deploy/docker-compose.dev.yml \
-  up --build
+./deploy/run.sh localhost
 ```
 
-Available endpoints:
+This starts both PostgreSQL databases, Redis and Caddy. It also creates
+`deploy/env/localhost/jwt-secret.env` when necessary. The file is ignored by
+Git and must be loaded by both business APIs.
 
-- Gateway: http://localhost
-- Auth API: http://localhost/api/v1/auth
-- Links API: http://localhost/api/v1/links
-- Eureka: http://eureka.localhost
-- Spring Boot Admin: http://admin.localhost
-- Auth PostgreSQL: `127.0.0.1:5432`
-- Links PostgreSQL: `127.0.0.1:5433`
+### 2. Configure IntelliJ
+
+Import the root `pom.xml` as a Maven project and create these Spring Boot run
+configurations:
+
+| Order | Main class | Env files |
+|---:|---|---|
+| 1 | `com.swisscom.infrastructure.observability.ObservabilityApplication` | `deploy/env/localhost/observability.env` |
+| 2 | `com.swisscom.infrastructure.discovery.DiscoveryApplication` | `deploy/env/localhost/discovery.env` |
+| 3 | `com.swisscom.services.auth_service.AuthenticatorApplication` | `deploy/env/localhost/authenticator.env`, `deploy/env/localhost/jwt-secret.env` |
+| 4 | `com.swisscom.services.links.LinksApplication` | `deploy/env/localhost/links.env`, `deploy/env/localhost/jwt-secret.env` |
+| 5 | `com.swisscom.infrastructure.gateway.GatewayApplication` | `deploy/env/localhost/gateway.env` |
+
+Use IntelliJ's EnvFile support. The Gateway listens on HTTP port `80`; Caddy
+publishes HTTPS port `443` and forwards requests to the Gateway.
+
+### 3. Trust Caddy once
+
+After the localhost dependencies are running, trust the shared Caddy CA:
+
+```bash
+./deploy/trust-caddy.sh localhost
+```
+
+This is required only once. DEV reuses the same Docker volume and CA.
+
+### 4. Open localhost services
+
+| Service | URL |
+|---|---|
+| Gateway | <https://localhost> |
+| Eureka | <http://localhost:8761> |
+| Spring Boot Admin | <http://localhost:10000> |
+| Auth Swagger | <http://localhost:4000/api/v1/auth/swagger-ui> |
+| Links Swagger | <http://localhost:5000/api/v1/links/swagger-ui> |
+
+Stop only the localhost dependencies with:
+
+```bash
+docker compose -f deploy/docker-compose.localhost.yml down
+```
+
+## Quick start: DEV
+
+DEV runs the complete stack in Docker. Caddy is the only container publishing
+host ports; application traffic remains on the internal `backend` network.
+
+### Start everything
+
+```bash
+./deploy/run.sh dev
+```
+
+The command generates or reuses `deploy/env/dev/jwt-secret.env`, builds the
+applications and starts everything in the background.
+
+```bash
+docker compose -f deploy/docker-compose.dev.yml ps
+docker compose -f deploy/docker-compose.dev.yml logs -f
+```
+
+### Start one group at a time
+
+Use this sequence when debugging startup problems:
+
+```bash
+# 1. Data layer
+./deploy/run.sh dev auth-postgres links-postgres redis
+
+# 2. Infrastructure
+./deploy/run.sh dev observability
+./deploy/run.sh dev discovery
+
+# 3. Business APIs
+./deploy/run.sh dev authenticator
+./deploy/run.sh dev links
+
+# 4. Entry points
+./deploy/run.sh dev gateway
+./deploy/run.sh dev caddy
+```
+
+Compose starts declared dependencies automatically. The explicit order above
+simply makes failures easier to isolate. `links` starts with the three replicas
+declared in `docker-compose.dev.yml`.
+
+Follow one service:
+
+```bash
+docker compose -f deploy/docker-compose.dev.yml logs -f gateway
+docker compose -f deploy/docker-compose.dev.yml logs -f authenticator
+docker compose -f deploy/docker-compose.dev.yml logs -f links
+```
+
+### Trust Caddy when DEV is the first environment
+
+If localhost was already configured, skip this step. Otherwise, after the DEV
+`caddy` container starts, run:
+
+```bash
+./deploy/trust-caddy.sh dev
+```
+
+### Open DEV services
+
+| Service | URL |
+|---|---|
+| Gateway and APIs | <https://localhost> |
+| Gateway alias | <https://gateway.localhost> |
+| Eureka | <https://eureka.localhost> |
+| Spring Boot Admin | <https://admin.localhost> |
+| Auth Swagger | <https://auth.localhost/api/v1/auth/swagger-ui> |
+| Links Swagger | <https://links.localhost/api/v1/links/swagger-ui> |
 
 Development administrator:
 
@@ -53,109 +190,99 @@ email:    admin@swisscom.local
 password: ChangeMe-Admin-2026!
 ```
 
-Override these values in the ignored root `.env` file using
-`BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD`.
-
-### Run a service from the IDE
-
-Start only the databases using the same DEV configuration:
+Confirm all three Links instances:
 
 ```bash
-docker compose \
-  -f deploy/docker-compose.yml \
-  -f deploy/docker-compose.dev.yml \
-  up -d auth-postgres links-postgres
+docker compose -f deploy/docker-compose.dev.yml ps links
 ```
 
-Run the Authenticator with the `local` Spring profile and a local JWT secret:
+Spring Boot Admin also shows three Links instances. They share a public Swagger
+service URL, while each replica registers a unique internal management URL. The
+house button opens Swagger for Authenticator and Links. Internal Actuator
+addresses are expected: the Admin server uses them from the Docker network and
+proxies their data to its UI.
+
+Stop DEV without deleting data:
 
 ```bash
-export SPRING_PROFILES_ACTIVE=local
-export APP_SECURITY_JWT_SECRET="$(openssl rand -base64 64)"
-mvn -pl services/authenticator spring-boot:run
+docker compose -f deploy/docker-compose.dev.yml down
 ```
 
-Direct Swagger UI: http://localhost:4000/api/v1/auth/swagger-ui
+## API routes
 
-### Optional HTTPS in DEV
+| Method | Path | Access |
+|---|---|---|
+| `POST` | `/api/v1/auth/login` | Public |
+| `POST` | `/api/v1/auth/register` | `ADMIN` JWT |
+| `GET` | `/api/v1/auth/me` | JWT |
+| `POST` | `/api/v1/links` | JWT |
+| `GET` | `/api/v1/links` | JWT |
+| `GET` | `/api/v1/links/{id}` | JWT and ownership |
+| `DELETE` | `/api/v1/links/{id}` | JWT and ownership |
+| `GET` | `/r/{shortCode}` | Public |
+
+## Tests
+
+### Postman
+
+Import these files into Postman:
+
+- `postman/Swisscom URL Shortener.postman_collection.json`
+- `postman/Swisscom DEV.postman_environment.json` or
+  `postman/Swisscom localhost.postman_environment.json`
+
+Select the environment and run the complete collection in its defined order.
+The scripts authenticate the development admin, create a unique test user,
+store both JWTs, exercise the complete link lifecycle and verify authorization
+failures. Keep redirect following disabled for the public redirect requests so
+Postman can assert the API's `302` response and `Location` header.
+
+### Maven
 
 ```bash
-docker compose \
-  -f deploy/docker-compose.yml \
-  -f deploy/docker-compose.dev.yml \
-  -f deploy/docker-compose.dev-tls.yml \
-  up --build
+mvn test
 ```
 
-HTTPS endpoints:
-
-- Gateway: https://gateway.localhost
-- Eureka: https://eureka.localhost
-- Spring Boot Admin: https://admin.localhost
-
-Caddy uses a local CA. Extract its public root certificate with:
+Run one module:
 
 ```bash
-docker compose \
-  -f deploy/docker-compose.yml \
-  -f deploy/docker-compose.dev.yml \
-  -f deploy/docker-compose.dev-tls.yml \
-  cp caddy:/data/caddy/pki/authorities/local/root.crt /tmp/swisscom-caddy-root.crt
+mvn -pl services/authenticator test
+mvn -pl services/links test
+mvn -pl infrastructure/gateway test
 ```
 
-On macOS, trust it in the current user's login keychain:
+## Troubleshooting
+
+### Gateway reports `Invalid or corrupt jarfile`
+
+This normally means Docker stored an incomplete image after its disk became
+full. Check free space, remove only build cache, and rebuild the Gateway:
 
 ```bash
-security add-trusted-cert \
-  -r trustRoot \
-  -k "$HOME/Library/Keychains/login.keychain-db" \
-  /tmp/swisscom-caddy-root.crt
+df -h /
+docker builder prune -af
+docker compose -f deploy/docker-compose.dev.yml build --no-cache gateway
+./deploy/run.sh dev gateway
+./deploy/run.sh dev caddy
 ```
 
-## PROD-like
+Do not use `docker volume prune` unless losing PostgreSQL, Redis and Caddy data
+is intentional.
 
-PROD-like publishes only Caddy on ports 80 and 443. Gateway, services,
-databases, Eureka, Spring Boot Admin and Actuator remain internal. Development
-routes, Swagger UI and the bootstrap administrator are disabled.
+### Reset all DEV data
 
-Create local secrets:
+This intentionally deletes all named DEV volumes:
 
 ```bash
-cp .env.example .env
+docker compose -f deploy/docker-compose.dev.yml down -v
 ```
 
-Replace `JWT_SECRET` with Base64 output from `openssl rand -base64 64` and set a
-strong `POSTGRES_PASSWORD`. Then run:
+### Rotate the shared JWT secret
 
 ```bash
-docker compose \
-  --env-file .env \
-  -f deploy/docker-compose.yml \
-  -f deploy/docker-compose.prod.yml \
-  up --build
+docker compose -f deploy/docker-compose.dev.yml down
+rm deploy/env/dev/jwt-secret.env
+./deploy/run.sh dev
 ```
 
-The only public endpoint is https://localhost. The local Caddy CA simulates TLS
-termination; a real deployment would use a publicly trusted certificate and a
-platform secret store.
-
-## Business routes
-
-The same business paths are used in DEV and PROD-like:
-
-- Authentication: `/api/v1/auth/**`
-- Link management: `/api/v1/links/**`
-- Public redirect: `/r/{code}`
-
-Infrastructure routes exist only with the gateway's `dev` profile.
-
-## Local overrides and secrets
-
-The root `.env` file is ignored by Git. `.env.example` documents supported
-variables without providing production credentials. Files under
-`deploy/env/dev` and `deploy/env/prod` contain only environment-specific,
-non-secret service configuration.
-
-Never commit passwords, JWT signing secrets, private keys or production
-certificates. Running `docker compose down -v` deletes database and Caddy
-volumes; omit `-v` when data should be preserved.
+Existing tokens become invalid after rotation.

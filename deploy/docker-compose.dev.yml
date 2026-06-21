@@ -1,70 +1,224 @@
-services:
-  links-postgres:
-    environment:
-      POSTGRES_DB: links
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "127.0.0.1:${LINKS_POSTGRES_PORT:-5433}:5432"
-    networks:
-      - backend
-      - dev-access
+name: swisscom-dev
 
+services:
+
+
+
+  ################
+  ## DB Section ##
+  ################
   auth-postgres:
+    image: postgres:17
     environment:
       POSTGRES_DB: authenticator
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-    ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
-    networks:
-      - backend
-      - dev-access
+    networks: [ backend ]
+    volumes:
+      - auth_postgres_volume:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d authenticator || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
-  gateway:
-    env_file:
-      - ./env/dev/gateway.env
-    ports:
-      - "${GATEWAY_PORT:-80}:80"
+  links-postgres:
+    image: postgres:17
     environment:
-      SPRING_BOOT_ADMIN_CLIENT_INSTANCE_SERVICE_URL: http://gateway.localhost:80/
-      SPRING_BOOT_ADMIN_CLIENT_INSTANCE_MANAGEMENT_URL: http://gateway.localhost:80/actuator
-      SPRING_BOOT_ADMIN_CLIENT_INSTANCE_HEALTH_URL: http://gateway.localhost:80/actuator/health
-    networks:
-      edge:
-      backend:
-        aliases:
-          - eureka.localhost
-          - gateway.localhost
+      POSTGRES_DB: links
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    networks: [ backend ]
+    volumes:
+      - links_postgres_volume:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d links || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  ################
+  ## DB Section ##
+  ################
 
+
+
+
+
+  ###################
+  ## CACHE Section ##
+  ###################
+  redis:
+    image: redis:7-alpine
+    networks: [ backend ]
+    volumes:
+      - redis_volume:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  ###################
+  ## CACHE Section ##
+  ###################
+
+
+
+
+
+  #############################
+  ## Infra Structure Section ##
+  #############################
+  # Monitoring
   observability:
+    build:
+      context: ../infrastructure/observability
     env_file:
       - ./env/dev/observability.env
-    environment:
-      SPRING_BOOT_ADMIN_UI_PUBLIC_URL: http://admin.localhost:80/
+    networks: [ backend ]
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:10000/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
+  # Eureka port discovery
   discovery:
+    build:
+      context: ../infrastructure/discovery
     env_file:
       - ./env/dev/discovery.env
-    environment:
-      SPRING_BOOT_ADMIN_CLIENT_INSTANCE_SERVICE_URL: http://eureka.localhost:80/
-      SPRING_BOOT_ADMIN_CLIENT_INSTANCE_MANAGEMENT_URL: http://eureka.localhost:80/actuator
-      SPRING_BOOT_ADMIN_CLIENT_INSTANCE_HEALTH_URL: http://eureka.localhost:80/actuator/health
+    networks: [ backend ]
+    depends_on:
+      observability:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:8761/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
+  # Spring Gateway for load balancing incoming requests
+  gateway:
+    build:
+      context: ../infrastructure/gateway
+    # Environment variables for gateway
+    env_file:
+      - ./env/dev/gateway.env
+    networks:
+      edge: # This is a public network for incoming traffic
+      backend: # Internal aliases let Spring Boot Admin use the same URLs shown in the browser.
+        aliases:
+          - gateway.localhost
+          - eureka.localhost
+          - admin.localhost
+          - auth.localhost
+          - links.localhost
+    depends_on:
+      discovery:
+        condition: service_healthy
+      observability:
+        condition: service_healthy
+      authenticator:
+        condition: service_healthy
+      links:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:80/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Caddy is used to have HTTPS communication between client and the gateway.
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - edge
+      - backend
+    volumes:
+      - ./caddy/dev/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      gateway:
+        condition: service_healthy
+  #############################
+  ## Infra Structure Section ##
+  #############################
+
+
+
+
+
+  #############################
+  ## MS Structure Section ##
+  #############################
+  # Authenticator Micro Service
   authenticator:
+    build:
+      context: ../services/authenticator
     env_file:
-      - ./env/dev/authenticator.env
-    environment:
-      APP_SECURITY_JWT_SECRET: ${DEV_JWT_SECRET:-cAUIescVgFsWtSshPjjZk+RCdTzUTgBwk6UGHbgkAdp1eDjLwrZn86MAd3XQjnNWj1lyk1VL/ECBYTWMwHdPPQ==}
-      APP_BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@swisscom.local}
-      APP_BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-ChangeMe-Admin-2026!}
+      - path: ./env/dev/authenticator.env
+      - path: ./env/dev/jwt-secret.env
+        required: false
+    networks: [ backend ]
+    depends_on:
+      auth-postgres:
+        condition: service_healthy
+      discovery:
+        condition: service_healthy
+      observability:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:4000/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
+  # Shor-link Micro Service
   links:
+    build:
+      context: ../services/links
     env_file:
-      - ./env/dev/links.env
-    environment:
-      APP_SECURITY_JWT_SECRET: ${DEV_JWT_SECRET:-cAUIescVgFsWtSshPjjZk+RCdTzUTgBwk6UGHbgkAdp1eDjLwrZn86MAd3XQjnNWj1lyk1VL/ECBYTWMwHdPPQ==}
+      - path: ./env/dev/links.env
+      - path: ./env/dev/jwt-secret.env
+        required: false
+    networks: [ backend ]
+    depends_on:
+      links-postgres:
+        condition: service_healthy
+      discovery:
+        condition: service_healthy
+      observability:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:5000/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      replicas: 3
+  #############################
+  ## MS Structure Section ##
+  #############################
+
+
+
+
 
 networks:
-  dev-access:
+  edge:
     driver: bridge
+  backend: # Backend is only internal.
+    driver: bridge
+    internal: true
+
+volumes:
+  auth_postgres_volume:
+  links_postgres_volume:
+  redis_volume:
+  caddy_data:
+    name: swisscom-caddy-data
+  caddy_config:

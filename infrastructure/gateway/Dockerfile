@@ -8,7 +8,8 @@ COPY pom.xml /app/
 COPY src /app/src
 WORKDIR /app
 
-RUN mvn clean package -DskipTests
+RUN mvn clean package -DskipTests \
+    && jar tf /app/target/gateway-0.0.1-SNAPSHOT.jar >/dev/null
 
 FROM eclipse-temurin:21-jre
 
@@ -21,7 +22,7 @@ RUN groupadd --system spring && useradd --system --gid spring --create-home spri
 USER spring:spring
 WORKDIR /app
 
-COPY --from=build /app/target/*.jar /app/app.jar
+COPY --from=build /app/target/gateway-0.0.1-SNAPSHOT.jar /app/app.jar
 
 EXPOSE 80
 

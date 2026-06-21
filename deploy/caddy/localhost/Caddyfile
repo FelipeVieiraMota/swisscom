@@ -4,5 +4,5 @@
 
 https://localhost {
 	tls internal
-	reverse_proxy gateway:80
+	reverse_proxy host.docker.internal:80
 }

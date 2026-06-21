@@ -15,10 +15,16 @@ public class DevInfrastructureRoutes {
         return builder.routes()
                 .route("dev-eureka", route -> route
                         .header("Host", "eureka\\.localhost(?::\\d+)?")
-                        .uri("lb://discovery"))
+                        .uri("http://discovery:8761"))
                 .route("dev-spring-boot-admin", route -> route
                         .header("Host", "admin\\.localhost(?::\\d+)?")
-                        .uri("lb://observability"))
+                        .uri("http://observability:10000"))
+                .route("dev-authenticator-management", route -> route
+                        .header("Host", "auth\\.localhost(?::\\d+)?")
+                        .uri("http://authenticator:4000"))
+                .route("dev-links-management", route -> route
+                        .header("Host", "links\\.localhost(?::\\d+)?")
+                        .uri("http://links:5000"))
                 .build();
     }
 }

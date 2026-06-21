@@ -1,0 +1,63 @@
+name: swisscom-localhost
+# Local dependencies for applications running from IntelliJ.
+services:
+  auth-postgres:
+    image: postgres:17
+    env_file:
+      - ./env/localhost/auth-postgres.env
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - auth_postgres_volume:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  links-postgres:
+    image: postgres:17
+    env_file:
+      - ./env/localhost/links-postgres.env
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - links_postgres_volume:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_volume:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Localhost uses the same TLS termination mechanism and CA as DEV.
+  # Gateway still runs from IntelliJ on port 80.
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "443:443"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./caddy/localhost/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  auth_postgres_volume:
+  links_postgres_volume:
+  redis_volume:
+  caddy_data:
+    name: swisscom-caddy-data
+  caddy_config:
