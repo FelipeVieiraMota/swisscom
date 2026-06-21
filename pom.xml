@@ -18,5 +18,6 @@
         <module>infrastructure/discovery</module>
         <module>infrastructure/observability</module>
         <module>services/authenticator</module>
+        <module>services/links</module>
     </modules>
 </project>
