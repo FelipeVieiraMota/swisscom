@@ -1,81 +1,108 @@
 # Swisscom URL Shortener Assignment
 
-## Local environment
+## Deployment modes
 
-Application configuration uses Spring placeholders in the form
-`${VARIABLE:default}`. Safe development defaults stay in the committed YAML
-files; machine-specific overrides and secrets belong in a local `.env` file.
+The repository has two explicit modes:
 
-### Run with the defaults
-
-The only local prerequisite is Docker with Docker Compose. No `.env`, Maven or
-local Java installation is required:
-
-```bash
-docker compose -f deploy/docker-compose.yml up --build
+```text
+deploy/
+├── docker-compose.yml           # shared, environment-neutral services
+├── docker-compose.dev.yml       # DEV, including local/IDE development
+├── docker-compose.dev-tls.yml   # optional HTTPS for DEV
+├── docker-compose.prod.yml      # production-like security boundary
+├── env/
+│   ├── dev/
+│   └── prod/
+└── caddy/
+    ├── dev/
+    └── prod/
 ```
 
-Only the public entry point is exposed to the host:
+The base Compose file is not intended to run by itself. Always combine it with
+either the DEV or PROD-like override.
+
+## DEV
+
+DEV contains the former default and local configurations. It exposes the
+gateway, the development infrastructure routes and PostgreSQL on loopback for
+IDE runs.
+
+### Full stack in Docker
+
+```bash
+docker compose \
+  -f deploy/docker-compose.yml \
+  -f deploy/docker-compose.dev.yml \
+  up --build
+```
+
+Available endpoints:
 
 - Gateway: http://localhost
-
-Eureka and Spring Boot Admin are attached only to the internal backend network.
-To make their UIs available through development-only gateway routes, apply the
-development override:
-
-```bash
-docker compose \
-  -f deploy/docker-compose.yml \
-  -f deploy/docker-compose.dev.yml \
-  up --build
-```
-
-The development-only endpoints are:
-
+- Auth API: http://localhost/api/v1/auth
+- Swagger UI: http://localhost/api/v1/auth/swagger-ui
 - Eureka: http://eureka.localhost
 - Spring Boot Admin: http://admin.localhost
+- PostgreSQL: `127.0.0.1:5432`
 
-These routes are created only when the gateway's `dev` Spring profile is
-active. The infrastructure containers remain unexposed to the host.
+Development administrator:
 
-### Optional local HTTPS
+```text
+email:    admin@swisscom.local
+password: ChangeMe-Admin-2026!
+```
 
-The TLS override adds Caddy as an edge proxy on port 443. Caddy terminates TLS
-and forwards requests to the gateway over the isolated Docker network:
+Override these values in the ignored root `.env` file using
+`BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD`.
+
+### Run a service from the IDE
+
+Start only PostgreSQL using the same DEV configuration:
 
 ```bash
 docker compose \
   -f deploy/docker-compose.yml \
   -f deploy/docker-compose.dev.yml \
-  -f deploy/docker-compose.tls.yml \
+  up -d auth-postgres
+```
+
+Run the Authenticator with the `local` Spring profile and a local JWT secret:
+
+```bash
+export SPRING_PROFILES_ACTIVE=local
+export APP_SECURITY_JWT_SECRET="$(openssl rand -base64 64)"
+mvn -pl services/authenticator spring-boot:run
+```
+
+Direct Swagger UI: http://localhost:4000/api/v1/auth/swagger-ui
+
+### Optional HTTPS in DEV
+
+```bash
+docker compose \
+  -f deploy/docker-compose.yml \
+  -f deploy/docker-compose.dev.yml \
+  -f deploy/docker-compose.dev-tls.yml \
   up --build
 ```
 
-The HTTPS endpoints are:
+HTTPS endpoints:
 
 - Gateway: https://gateway.localhost
 - Eureka: https://eureka.localhost
 - Spring Boot Admin: https://admin.localhost
 
-Caddy generates the development certificates and private keys in a Docker
-volume; they are never committed. Its local CA is not trusted by the host by
-default. To obtain the public root certificate after Caddy starts:
+Caddy uses a local CA. Extract its public root certificate with:
 
 ```bash
 docker compose \
   -f deploy/docker-compose.yml \
   -f deploy/docker-compose.dev.yml \
-  -f deploy/docker-compose.tls.yml \
+  -f deploy/docker-compose.dev-tls.yml \
   cp caddy:/data/caddy/pki/authorities/local/root.crt /tmp/swisscom-caddy-root.crt
 ```
 
-Import `/tmp/swisscom-caddy-root.crt` into the operating system or browser
-trust store to remove the local certificate warning. Never copy or share the
-CA private key. A production deployment would replace the internal CA with
-Let's Encrypt or the organization's certificate authority.
-
-On macOS, trust the extracted public certificate in the current user's login
-keychain:
+On macOS, trust it in the current user's login keychain:
 
 ```bash
 security add-trusted-cert \
@@ -84,33 +111,50 @@ security add-trusted-cert \
   /tmp/swisscom-caddy-root.crt
 ```
 
-The CA is persisted in the `caddy_data` Docker volume. Running
-`docker compose down -v` deletes that CA, so a newly generated root certificate
-must be trusted again.
+## PROD-like
 
-### Override local values
+PROD-like publishes only Caddy on ports 80 and 443. Gateway, services,
+databases, Eureka, Spring Boot Admin and Actuator remain internal. Development
+routes, Swagger UI and the bootstrap administrator are disabled.
 
-Creating a `.env` file is optional. Use it when a default port conflicts with
-another application or when future services require local credentials:
+Create local secrets:
 
 ```bash
 cp .env.example .env
-docker compose --env-file .env -f deploy/docker-compose.yml up --build
 ```
 
-The `.env` file is intentionally ignored by Git. When a new required variable
-is introduced, add its name and a non-sensitive example value to
-`.env.example`.
+Replace `JWT_SECRET` with Base64 output from `openssl rand -base64 64` and set a
+strong `POSTGRES_PASSWORD`. Then run:
 
-Service-level, non-sensitive configuration is versioned under `deploy/env/`
-and loaded into each container by Docker Compose. For example,
-`deploy/env/gateway.env` contains the gateway port, Eureka addresses and log
-levels required by every developer.
+```bash
+docker compose \
+  --env-file .env \
+  -f deploy/docker-compose.yml \
+  -f deploy/docker-compose.prod.yml \
+  up --build
+```
 
-Do not place passwords, tokens or private keys in the committed files under
-`deploy/env/`. Secrets belong in the ignored root `.env` for local development
-and in the deployment platform's secret store in production.
+The only public endpoint is https://localhost. The local Caddy CA simulates TLS
+termination; a real deployment would use a publicly trusted certificate and a
+platform secret store.
 
-For an IDE run, either keep the YAML defaults or add the same variables to the
-Spring Boot run configuration. Production secrets must be supplied by the
-deployment platform and must never be committed.
+## Business routes
+
+The same business paths are used in DEV and PROD-like:
+
+- Authentication: `/api/v1/auth/**`
+- Link management: `/api/v1/links/**`
+- Public redirect: `/r/{code}`
+
+Infrastructure routes exist only with the gateway's `dev` profile.
+
+## Local overrides and secrets
+
+The root `.env` file is ignored by Git. `.env.example` documents supported
+variables without providing production credentials. Files under
+`deploy/env/dev` and `deploy/env/prod` contain only environment-specific,
+non-secret service configuration.
+
+Never commit passwords, JWT signing secrets, private keys or production
+certificates. Running `docker compose down -v` deletes database and Caddy
+volumes; omit `-v` when data should be preserved.

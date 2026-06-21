@@ -6,9 +6,9 @@ services:
     networks:
       - edge
     volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
+      - ./caddy/dev/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_dev_data:/data
+      - caddy_dev_config:/config
     depends_on:
       gateway:
         condition: service_healthy
@@ -26,5 +26,5 @@ services:
       SPRING_BOOT_ADMIN_CLIENT_INSTANCE_SERVICE_URL: https://gateway.localhost:443/
 
 volumes:
-  caddy_data:
-  caddy_config:
+  caddy_dev_data:
+  caddy_dev_config:

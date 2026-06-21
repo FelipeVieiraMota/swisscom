@@ -1,0 +1,7 @@
+app:
+  bootstrap-admin:
+    email: admin@test.local
+    password: Test-Admin-Password-2026!
+  security:
+    jwt:
+      secret: YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=
