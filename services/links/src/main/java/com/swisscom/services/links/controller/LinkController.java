@@ -1,5 +1,6 @@
 package com.swisscom.services.links.controller;
 
+import com.swisscom.services.links.configuration.OpenApiConfiguration;
 import com.swisscom.services.links.domain.dto.request.CreateLinkRequest;
 import com.swisscom.services.links.domain.dto.response.LinkResponse;
 import com.swisscom.services.links.domain.security.JwtPrincipal;
@@ -10,6 +11,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,6 +35,8 @@ public class LinkController {
 
     @PostMapping
     @Operation(summary = "Create a short link")
+    @SecurityRequirement(name = OpenApiConfiguration.BEARER_AUTH)
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
     public ResponseEntity<@NonNull LinkResponse> create(
             @AuthenticationPrincipal final JwtPrincipal principal,
             @Valid @RequestBody final CreateLinkRequest request
@@ -45,12 +49,16 @@ public class LinkController {
 
     @GetMapping
     @Operation(summary = "List the current user's links")
+    @SecurityRequirement(name = OpenApiConfiguration.BEARER_AUTH)
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
     public List<LinkResponse> list(@AuthenticationPrincipal final JwtPrincipal principal) {
         return linkService.listByOwner(principal.userId());
     }
 
     @GetMapping("/{id}")
     @Operation(summary = "Get one link owned by the current user")
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
+    @SecurityRequirement(name = OpenApiConfiguration.BEARER_AUTH)
     public LinkResponse find(
             @AuthenticationPrincipal final JwtPrincipal principal,
             @PathVariable final UUID id
@@ -60,6 +68,8 @@ public class LinkController {
 
     @DeleteMapping("/{id}")
     @Operation(summary = "Deactivate one link owned by the current user")
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
+    @SecurityRequirement(name = OpenApiConfiguration.BEARER_AUTH)
     public ResponseEntity<@NonNull Void> deactivate(
             @AuthenticationPrincipal final JwtPrincipal principal,
             @PathVariable final UUID id

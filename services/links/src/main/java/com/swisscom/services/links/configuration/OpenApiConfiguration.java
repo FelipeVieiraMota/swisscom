@@ -14,6 +14,8 @@ import java.util.List;
 @Configuration
 public class OpenApiConfiguration {
 
+    public static final String BEARER_AUTH = "bearerAuth";
+
     @Bean
     public OpenAPI linksOpenApi() {
         return new OpenAPI()
