@@ -25,6 +25,11 @@ Authenticator and Links use separate PostgreSQL databases. Both APIs receive
 the same environment-specific JWT secret, but Links never accesses the
 Authenticator database.
 
+Gateway propagates `X-Correlation-Id` to Links. Links includes the value in its
+MDC log context and response header; direct requests without the header receive
+a generated UUID. This allows one request to be followed across the Gateway and
+any of the three Links instances.
+
 ## Links cache
 
 Only the Links service uses Redis. All three Links instances share the same
