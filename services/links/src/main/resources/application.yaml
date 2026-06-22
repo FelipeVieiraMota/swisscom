@@ -4,7 +4,15 @@ server:
 spring:
   application:
     name: links
-
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+  cache:
+    type: redis
+    redis:
+      time-to-live: 10m
+      cache-null-values: false
   boot:
     admin:
       client:

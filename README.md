@@ -2,18 +2,14 @@
 
 URL shortener implemented as a Spring Boot monorepo. It includes stateless JWT
 authentication, link management, service discovery, monitoring, load balancing
-and HTTPS for development.
+Redis caching and HTTPS for development.
 
 ## Architecture
 
-```text
-                                      +-> Authenticator -> Auth PostgreSQL
-Client -> HTTPS -> Caddy -> Gateway --+
-                                      +-> Links (3 instances) -> Links PostgreSQL
+<p>
+  <img src="architecture.png" alt="Swisscom URL Shortener Architecture" width="1536"/>
+</p>
 
-                         Eureka <---- services
-              Spring Boot Admin <---- Actuator
-```
 
 | Service | Internal port | Responsibility |
 |---|---:|---|
@@ -22,11 +18,39 @@ Client -> HTTPS -> Caddy -> Gateway --+
 | Links | `5000` | Link management and redirects |
 | Discovery | `8761` | Eureka service discovery |
 | Observability | `10000` | Spring Boot Admin |
+| Redis | `6379` | Shared redirect cache used only by Links |
 | Caddy | `80`, `443` | DEV HTTP/HTTPS entry point |
 
 Authenticator and Links use separate PostgreSQL databases. Both APIs receive
 the same environment-specific JWT secret, but Links never accesses the
 Authenticator database.
+
+## Links cache
+
+Only the Links service uses Redis. All three Links instances share the same
+cache, which makes cached redirects available regardless of the instance
+selected by the Gateway load balancer.
+
+The `popular-links` cache stores the original URL using the short code as its
+key:
+
+```text
+popular-links::{shortCode} -> originalUrl
+```
+
+The redirect flow is:
+
+1. The first request to `GET /r/{shortCode}` looks up the active, non-expired
+   link in PostgreSQL and stores its original URL in Redis.
+2. Subsequent requests can resolve the destination from Redis without repeating
+   that lookup.
+3. The click counter is still incremented in PostgreSQL for every redirect.
+4. Deactivating a link evicts its cache entry immediately, preventing a cached
+   redirect from remaining active.
+
+Entries have a **10-minute TTL** and null results are never cached. Links also
+clears the shared `popular-links` cache on a 10-minute schedule. The
+Authenticator does not depend on Redis.
 
 ## Environments
 

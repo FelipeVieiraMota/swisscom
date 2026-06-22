@@ -8,6 +8,12 @@ import com.swisscom.services.links.exception.LinkNotFoundException;
 import com.swisscom.services.links.exception.ShortCodeGenerationException;
 import com.swisscom.services.links.repository.LinkRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +28,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
+@Slf4j
 public class LinkService {
 
     private static final int MAX_CODE_GENERATION_ATTEMPTS = 10;
@@ -30,6 +37,7 @@ public class LinkService {
     private final LinkRepository linkRepository;
     private final ShortCodeGenerator shortCodeGenerator;
     private final Clock clock;
+    private final CacheManager cacheManager;
 
     @Transactional
     public LinkResponse create(final UUID ownerId, final CreateLinkRequest request) {
@@ -62,17 +70,43 @@ public class LinkService {
     public void deactivate(final UUID ownerId, final UUID linkId) {
         final Link link = linkRepository.findByIdAndOwnerId(linkId, ownerId)
                 .orElseThrow(LinkNotFoundException::new);
+
         link.setActive(false);
+        evictOneLinkCache(link.getShortCode());
+    }
+
+    @CacheEvict(value = "popular-links", key = "#shortCode")
+    public void evictOneLinkCache(final String shortCode) {
+        log.info("Deleting old cache for #shortCode Key : {} ", shortCode);
+    }
+
+    @Scheduled(fixedRateString = "${spring.cache.redis.time-to-live}")
+    public void clearAllPopularLinksCache() {
+        final Cache cache = cacheManager.getCache("popular-links");
+
+        if (cache != null) {
+            cache.clear();
+            log.info("popular-links cache cleared");
+        }
     }
 
     @Transactional
     public URI resolve(final String shortCode) {
+        final String originalUrl = findOriginalUrlByShortCode(shortCode);
+
+        linkRepository.findByShortCodeAndActiveTrue(shortCode)
+                .ifPresent(link -> linkRepository.incrementClickCount(link.getId()));
+
+        return URI.create(originalUrl);
+    }
+
+    @Cacheable(value = "popular-links", key = "#shortCode")
+    public String findOriginalUrlByShortCode(final String shortCode) {
         final Link link = linkRepository.findByShortCodeAndActiveTrue(shortCode)
                 .filter(this::isNotExpired)
                 .orElseThrow(LinkNotFoundException::new);
 
-        linkRepository.incrementClickCount(link.getId());
-        return URI.create(link.getOriginalUrl());
+        return link.getOriginalUrl();
     }
 
     private String nextUniqueShortCode() {
