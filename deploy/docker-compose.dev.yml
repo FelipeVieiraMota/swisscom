@@ -111,8 +111,6 @@ services:
           - gateway.localhost
           - eureka.localhost
           - admin.localhost
-          - auth.localhost
-          - links.localhost
     depends_on:
       discovery:
         condition: service_healthy

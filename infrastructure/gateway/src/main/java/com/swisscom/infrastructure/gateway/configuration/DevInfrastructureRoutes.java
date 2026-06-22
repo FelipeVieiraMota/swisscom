@@ -19,12 +19,6 @@ public class DevInfrastructureRoutes {
                 .route("dev-spring-boot-admin", route -> route
                         .header("Host", "admin\\.localhost(?::\\d+)?")
                         .uri("http://observability:10000"))
-                .route("dev-authenticator-management", route -> route
-                        .header("Host", "auth\\.localhost(?::\\d+)?")
-                        .uri("http://authenticator:4000"))
-                .route("dev-links-management", route -> route
-                        .header("Host", "links\\.localhost(?::\\d+)?")
-                        .uri("http://links:5000"))
                 .build();
     }
 }
