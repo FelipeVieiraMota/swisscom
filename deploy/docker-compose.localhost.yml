@@ -41,6 +41,19 @@ services:
       timeout: 5s
       retries: 10
 
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq_volume:/var/lib/rabbitmq
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   # Localhost uses the same TLS termination mechanism and CA as DEV.
   # Gateway still runs from IntelliJ on port 80.
   caddy:
@@ -58,6 +71,7 @@ volumes:
   auth_postgres_volume:
   links_postgres_volume:
   redis_volume:
+  rabbitmq_volume:
   caddy_data:
     name: swisscom-caddy-data
   caddy_config:

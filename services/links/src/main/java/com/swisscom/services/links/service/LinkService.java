@@ -2,7 +2,9 @@ package com.swisscom.services.links.service;
 
 import com.swisscom.services.links.domain.dto.request.CreateLinkRequest;
 import com.swisscom.services.links.domain.dto.response.LinkResponse;
+import com.swisscom.services.links.domain.dto.response.RedirectTarget;
 import com.swisscom.services.links.domain.entity.Link;
+import com.swisscom.services.links.domain.events.ClickCountEventPublisher;
 import com.swisscom.services.links.exception.InvalidLinkUrlException;
 import com.swisscom.services.links.exception.LinkNotFoundException;
 import com.swisscom.services.links.exception.ShortCodeGenerationException;
@@ -12,7 +14,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,6 +39,8 @@ public class LinkService {
     private final ShortCodeGenerator shortCodeGenerator;
     private final Clock clock;
     private final CacheManager cacheManager;
+    private final ClickCountEventPublisher clickCountEventPublisher;
+    private final RedirectTargetResolver redirectTargetResolver;
 
     @Transactional
     public LinkResponse create(final UUID ownerId, final CreateLinkRequest request) {
@@ -90,23 +93,12 @@ public class LinkService {
         }
     }
 
-    @Transactional
     public URI resolve(final String shortCode) {
-        final String originalUrl = findOriginalUrlByShortCode(shortCode);
+        final RedirectTarget target = redirectTargetResolver.findByShortCode(shortCode);
 
-        linkRepository.findByShortCodeAndActiveTrue(shortCode)
-                .ifPresent(link -> linkRepository.incrementClickCount(link.getId()));
+        clickCountEventPublisher.publish(target.linkId());
 
-        return URI.create(originalUrl);
-    }
-
-    @Cacheable(value = "popular-links", key = "#shortCode")
-    public String findOriginalUrlByShortCode(final String shortCode) {
-        final Link link = linkRepository.findByShortCodeAndActiveTrue(shortCode)
-                .filter(this::isNotExpired)
-                .orElseThrow(LinkNotFoundException::new);
-
-        return link.getOriginalUrl();
+        return URI.create(target.originalUrl());
     }
 
     private String nextUniqueShortCode() {
@@ -141,7 +133,4 @@ public class LinkService {
         }
     }
 
-    private boolean isNotExpired(final Link link) {
-        return link.getExpiresAt() == null || link.getExpiresAt().isAfter(clock.instant());
-    }
 }

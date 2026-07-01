@@ -36,6 +36,9 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
         MDC.put(MDC_KEY, correlationId);
 
         try {
+            if (request.getRequestURI().contains("/actuator")){
+                return;
+            }
             log.info("Incoming request {} {}", request.getMethod(), request.getRequestURI());
             filterChain.doFilter(request, response);
         } finally {

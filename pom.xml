@@ -19,5 +19,6 @@
         <module>infrastructure/observability</module>
         <module>services/authenticator</module>
         <module>services/links</module>
+        <module>services/link-consumer</module>
     </modules>
 </project>

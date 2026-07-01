@@ -2,6 +2,7 @@ package com.swisscom.services.links;
 
 import com.swisscom.services.links.domain.entity.Link;
 import com.swisscom.services.links.repository.LinkRepository;
+import com.swisscom.services.links.domain.events.ClickCountEventPublisher;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
@@ -9,13 +10,18 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -31,6 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@Import(LinksApplicationTests.TestClickCountConfiguration.class)
 class LinksApplicationTests {
 
     private static final String TEST_SECRET = "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=";
@@ -41,9 +48,13 @@ class LinksApplicationTests {
     @Autowired
     private LinkRepository linkRepository;
 
+    @Autowired
+    private RecordingClickCountEventPublisher clickCountEventPublisher;
+
     @BeforeEach
     void cleanDatabase() {
         linkRepository.deleteAll();
+        clickCountEventPublisher.clear();
     }
 
     @Test
@@ -93,7 +104,7 @@ class LinksApplicationTests {
     }
 
     @Test
-    void shouldRedirectPublicLinkAndIncrementClickCount() throws Exception {
+    void shouldRedirectPublicLinkAndPublishClickCountEvent() throws Exception {
         final Link link = linkRepository.save(Link.builder()
                 .shortCode("GoThere1")
                 .originalUrl("https://example.com/destination")
@@ -104,7 +115,8 @@ class LinksApplicationTests {
                 .andExpect(status().isFound())
                 .andExpect(header().string(HttpHeaders.LOCATION, "https://example.com/destination"));
 
-        assertThat(linkRepository.findById(link.getId()).orElseThrow().getClickCount()).isEqualTo(1);
+        assertThat(linkRepository.findById(link.getId()).orElseThrow().getClickCount()).isZero();
+        assertThat(clickCountEventPublisher.publishedLinkIds()).containsExactly(link.getId());
     }
 
     @Test
@@ -161,5 +173,33 @@ class LinksApplicationTests {
                 .expiration(Date.from(now.plusSeconds(900)))
                 .signWith(Keys.hmacShaKeyFor(Decoders.BASE64.decode(TEST_SECRET)), Jwts.SIG.HS256)
                 .compact();
+    }
+
+    @TestConfiguration
+    static class TestClickCountConfiguration {
+
+        @Bean
+        @Primary
+        RecordingClickCountEventPublisher recordingClickCountEventPublisher() {
+            return new RecordingClickCountEventPublisher();
+        }
+    }
+
+    static class RecordingClickCountEventPublisher implements ClickCountEventPublisher {
+
+        private final List<UUID> publishedLinkIds = new ArrayList<>();
+
+        @Override
+        public void publish(final UUID linkId) {
+            publishedLinkIds.add(linkId);
+        }
+
+        List<UUID> publishedLinkIds() {
+            return List.copyOf(publishedLinkIds);
+        }
+
+        void clear() {
+            publishedLinkIds.clear();
+        }
     }
 }

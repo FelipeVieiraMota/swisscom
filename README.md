@@ -2,7 +2,7 @@
 
 URL shortener implemented as a Spring Boot monorepo. It includes stateless JWT
 authentication, link management, service discovery, monitoring, load balancing
-Redis caching and HTTPS for development.
+Redis caching, asynchronous click-count processing and HTTPS for development.
 
 ## Architecture
 
@@ -16,14 +16,20 @@ Redis caching and HTTPS for development.
 | Gateway | `80` | Public API routing and load balancing |
 | Authenticator | `4000` | Users, login and JWT generation |
 | Links | `5000` | Link management and redirects |
+| Link Consumer | `5100` | Asynchronous click-count updates |
 | Discovery | `8761` | Eureka service discovery |
 | Observability | `10000` | Spring Boot Admin |
 | Redis | `6379` | Shared redirect cache used only by Links |
+| RabbitMQ | `5672` | Click event broker between Links and Link Consumer |
 | Caddy | `80`, `443` | DEV HTTP/HTTPS entry point |
 
 Authenticator and Links use separate PostgreSQL databases. Both APIs receive
 the same environment-specific JWT secret, but Links never accesses the
 Authenticator database.
+
+Redirects are intentionally split from click-count persistence. Links publishes
+a click event to RabbitMQ after resolving a short URL, and Link Consumer updates
+the Links PostgreSQL database asynchronously.
 
 Gateway propagates `X-Correlation-Id` to Links. Links includes the value in its
 MDC log context and response header; direct requests without the header receive
@@ -49,19 +55,21 @@ The redirect flow is:
    link in PostgreSQL and stores its original URL in Redis.
 2. Subsequent requests can resolve the destination from Redis without repeating
    that lookup.
-3. The click counter is still incremented in PostgreSQL for every redirect.
-4. Deactivating a link evicts its cache entry immediately, preventing a cached
+3. Links publishes a click event to RabbitMQ after resolving the redirect.
+4. Link Consumer receives that event and increments the click counter in
+   PostgreSQL asynchronously.
+5. Deactivating a link evicts its cache entry immediately, preventing a cached
    redirect from remaining active.
 
 Entries have a **10-minute TTL** and null results are never cached. Links also
 clears the shared `popular-links` cache on a 10-minute schedule. The
-Authenticator does not depend on Redis.
+Authenticator does not depend on Redis or RabbitMQ.
 
 ## Environments
 
 The repository intentionally supports only two execution modes:
 
-| Environment | Applications | Databases and Redis | TLS termination |
+| Environment | Applications | Data and messaging services | TLS termination |
 |---|---|---|---|
 | `localhost` | IntelliJ | Docker | Caddy |
 | `dev` | Docker | Docker | Caddy |
@@ -85,16 +93,16 @@ Run all commands from the repository root.
 
 ## Quick start: localhost
 
-Use this mode to run the Java applications from IntelliJ while PostgreSQL and
-Redis remain in Docker.
+Use this mode to run the Java applications from IntelliJ while PostgreSQL,
+Redis and RabbitMQ remain in Docker.
 
-### 1. Start databases and Redis
+### 1. Start databases, Redis and RabbitMQ
 
 ```bash
 ./deploy/run.sh localhost
 ```
 
-This starts both PostgreSQL databases, Redis and Caddy. It also creates
+This starts both PostgreSQL databases, Redis, RabbitMQ and Caddy. It also creates
 `deploy/env/localhost/jwt-secret.env` when necessary. The file is ignored by
 Git and must be loaded by both business APIs.
 
@@ -109,7 +117,8 @@ configurations:
 | 2 | `com.swisscom.infrastructure.discovery.DiscoveryApplication` | `deploy/env/localhost/discovery.env` |
 | 3 | `com.swisscom.services.auth_service.AuthenticatorApplication` | `deploy/env/localhost/authenticator.env`, `deploy/env/localhost/jwt-secret.env` |
 | 4 | `com.swisscom.services.links.LinksApplication` | `deploy/env/localhost/links.env`, `deploy/env/localhost/jwt-secret.env` |
-| 5 | `com.swisscom.infrastructure.gateway.GatewayApplication` | `deploy/env/localhost/gateway.env` |
+| 5 | `com.swisscom.services.link_consumer.LinkConsumerApplication` | `deploy/env/localhost/link-consumer.env` |
+| 6 | `com.swisscom.infrastructure.gateway.GatewayApplication` | `deploy/env/localhost/gateway.env` |
 
 Use IntelliJ's EnvFile support. The Gateway listens on HTTP port `80`; Caddy
 publishes HTTPS port `443` and forwards requests to the Gateway.
@@ -164,8 +173,8 @@ docker compose -f deploy/docker-compose.dev.yml logs -f
 Use this sequence when debugging startup problems:
 
 ```bash
-# 1. Data layer
-./deploy/run.sh dev auth-postgres links-postgres redis
+# 1. Data and messaging layer
+./deploy/run.sh dev auth-postgres links-postgres redis rabbitmq
 
 # 2. Infrastructure
 ./deploy/run.sh dev observability
@@ -174,6 +183,7 @@ Use this sequence when debugging startup problems:
 # 3. Business APIs
 ./deploy/run.sh dev authenticator
 ./deploy/run.sh dev links
+./deploy/run.sh dev link-consumer
 
 # 4. Entry points
 ./deploy/run.sh dev gateway
@@ -182,7 +192,8 @@ Use this sequence when debugging startup problems:
 
 Compose starts declared dependencies automatically. The explicit order above
 simply makes failures easier to isolate. `links` starts with the three replicas
-declared in `docker-compose.dev.yml`.
+declared in `docker-compose.dev.yml`; `link-consumer` runs as a separate worker
+for click-count events.
 
 Follow one service:
 
@@ -190,6 +201,7 @@ Follow one service:
 docker compose -f deploy/docker-compose.dev.yml logs -f gateway
 docker compose -f deploy/docker-compose.dev.yml logs -f authenticator
 docker compose -f deploy/docker-compose.dev.yml logs -f links
+docker compose -f deploy/docker-compose.dev.yml logs -f link-consumer
 ```
 
 ### Trust Caddy when DEV is the first environment
@@ -230,6 +242,10 @@ service URL, while each replica registers a unique internal management URL. The
 house button opens Swagger for Authenticator and Links. Internal Actuator
 addresses are expected: the Admin server uses them from the Docker network and
 proxies their data to its UI.
+
+Link Consumer also appears as an internal service in Spring Boot Admin. It does
+not expose public API routes; it only listens to RabbitMQ and updates click
+counts.
 
 Stop DEV without deleting data:
 
@@ -277,6 +293,7 @@ Run one module:
 ```bash
 mvn -pl services/authenticator test
 mvn -pl services/links test
+mvn -pl services/link-consumer test
 mvn -pl infrastructure/gateway test
 ```
 

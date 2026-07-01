@@ -1,0 +1,60 @@
+spring:
+  application:
+    name: link-consumer
+
+  boot:
+    admin:
+      client:
+        enabled: ${SPRING_BOOT_ADMIN_CLIENT_ENABLED:false}
+        auto-registration: ${SPRING_BOOT_ADMIN_CLIENT_AUTO_REGISTRATION:false}
+        url: ${SPRING_BOOT_ADMIN_CLIENT_URL:http://localhost:10000}
+        instance:
+          service-url: ${SPRING_BOOT_ADMIN_CLIENT_INSTANCE_SERVICE_URL:http://localhost:${server.port}}
+          management-url: ${SPRING_BOOT_ADMIN_CLIENT_INSTANCE_MANAGEMENT_URL:${spring.boot.admin.client.instance.service-url}/actuator}
+          health-url: ${SPRING_BOOT_ADMIN_CLIENT_INSTANCE_HEALTH_URL:${spring.boot.admin.client.instance.service-url}/actuator/health}
+
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:localhost}
+    port: ${SPRING_RABBITMQ_PORT:5672}
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/links}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:none}
+
+  flyway:
+    enabled: ${SPRING_FLYWAY_ENABLED:false}
+
+server:
+  port: ${SERVER_PORT:5100}
+
+eureka:
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${random.uuid}
+    non-secure-port: ${server.port}
+    metadata-map:
+      management.context-path: /actuator
+  client:
+    register-with-eureka: ${EUREKA_CLIENT_REGISTER_WITH_EUREKA:false}
+    fetch-registry: ${EUREKA_CLIENT_FETCH_REGISTRY:false}
+    service-url:
+      defaultZone: ${EUREKA_DEFAULT_ZONE:http://localhost:8761/eureka/}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    org.springframework.web: ${LOGGING_LEVEL_WEB:INFO}

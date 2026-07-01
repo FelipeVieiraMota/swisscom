@@ -57,6 +57,17 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    networks: [ backend ]
+    volumes:
+      - rabbitmq_volume:/var/lib/rabbitmq
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
   ###################
   ## CACHE Section ##
   ###################
@@ -187,6 +198,10 @@ services:
     depends_on:
       links-postgres:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      link-consumer:
+        condition: service_healthy
       discovery:
         condition: service_healthy
       observability:
@@ -198,6 +213,28 @@ services:
       retries: 10
     deploy:
       replicas: 3
+
+  # Link Consumer Micro Service
+  link-consumer:
+    build:
+      context: ../services/link-consumer
+    env_file:
+      - ./env/dev/link-consumer.env
+    networks: [ backend ]
+    depends_on:
+      links-postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      discovery:
+        condition: service_healthy
+      observability:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:5100/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
   #############################
   ## MS Structure Section ##
   #############################
@@ -217,6 +254,7 @@ volumes:
   auth_postgres_volume:
   links_postgres_volume:
   redis_volume:
+  rabbitmq_volume:
   caddy_data:
     name: swisscom-caddy-data
   caddy_config:
